@@ -87,7 +87,7 @@ def extract_data_from_image(image_path: Path) -> dict:
     return json.loads(response.choices[0].message.content)
 
 
-def generate_report(data: dict, period: str) -> str:
+def generate_report(data: dict, period: str, store_name: str = "古河店") -> str:
     """GPT-4oで実績データを分析してレポートを生成する。"""
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
@@ -100,7 +100,7 @@ def generate_report(data: dict, period: str) -> str:
 {json.dumps(data, ensure_ascii=False, indent=2)}
 
 レポートの要件：
-1. 冒頭は「{period}ダッシュボード最新実績を配信します。」の次の行に「古河店の実績についてご報告いたします。」を入れる
+1. 冒頭は「{period}ダッシュボード最新実績を配信します。」の次の行に「{store_name}の実績についてご報告いたします。」を入れる
 2. 各カテゴリ（モバイル・LD系・BBC）ごとに状況をまとめる
 3. 達成率が標準進捗・全国平均を上回っている項目を【良い点】として挙げる
 4. 達成率が標準進捗・全国平均を下回っている項目を【課題】として挙げる

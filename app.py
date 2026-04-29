@@ -12,11 +12,20 @@ load_dotenv(REPORT_BOT_DIR / ".env", override=True)
 # Streamlit Cloud用：Secretsがあれば環境変数に設定する
 if "OPENAI_API_KEY" in st.secrets:
     os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
-if "GOOGLE_CHAT_WEBHOOK" in st.secrets:
-    os.environ["GOOGLE_CHAT_WEBHOOK"] = st.secrets["GOOGLE_CHAT_WEBHOOK"]
 
 sys.path.insert(0, str(REPORT_BOT_DIR))
 from analyze import extract_data_from_image, generate_report, post_to_google_chat
+
+# --- 店舗設定（店舗追加時はここに追記するだけ） ---
+STORE_CONFIGS = {
+    "古河店": {
+        "webhook_key": "FURUKAWA_WEBHOOK",
+    },
+    # 今後の追加例：
+    # "〇〇店": {
+    #     "webhook_key": "STOREB_WEBHOOK",
+    # },
+}
 
 st.title("実績レポートBot")
 
@@ -26,6 +35,8 @@ if "stage" not in st.session_state:
 # --- Stage 1: アップロード ---
 if st.session_state.stage == "upload":
     st.header("実績データの画像をアップロード")
+
+    store_name = st.selectbox("店舗を選択", list(STORE_CONFIGS.keys()))
     period = st.text_input("対象期間（例：2026年4月）", placeholder="2026年4月")
     uploaded_file = st.file_uploader("画像を選択（png / jpg）", type=["png", "jpg", "jpeg"])
 
@@ -35,18 +46,20 @@ if st.session_state.stage == "upload":
             with open(save_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
 
-            with st.spinner("Geminiが画像からデータを読み取り中..."):
+            with st.spinner("GPT-4oが画像からデータを読み取り中..."):
                 data = extract_data_from_image(save_path)
 
             st.session_state.data = data
             st.session_state.period = period
+            st.session_state.store_name = store_name
             st.session_state.image_path = str(save_path)
             st.session_state.stage = "confirm"
             st.rerun()
 
 # --- Stage 2: データ確認・レポート生成・投稿 ---
 elif st.session_state.stage == "confirm":
-    st.header("抽出されたデータを確認")
+    store_name = st.session_state.store_name
+    st.header(f"抽出されたデータを確認（{store_name}）")
 
     data = st.session_state.data
 
@@ -66,12 +79,17 @@ elif st.session_state.stage == "confirm":
     with col1:
         if st.button("レポートを生成してGoogle Chatに投稿", type="primary"):
             with st.spinner("レポートを生成中..."):
-                report = generate_report(st.session_state.data, st.session_state.period)
+                report = generate_report(st.session_state.data, st.session_state.period, store_name)
 
-            webhook_url = os.environ.get("GOOGLE_CHAT_WEBHOOK")
+            webhook_key = STORE_CONFIGS[store_name]["webhook_key"]
+            webhook_url = (
+                st.secrets.get(webhook_key)
+                or os.environ.get(webhook_key)
+                or os.environ.get("GOOGLE_CHAT_WEBHOOK")
+            )
             post_to_google_chat(report, webhook_url)
 
-            st.success("Google Chatに投稿しました！")
+            st.success(f"{store_name}のGoogle Chatに投稿しました！")
             st.subheader("生成されたレポート")
             st.text(report)
 
