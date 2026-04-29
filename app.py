@@ -2,14 +2,18 @@ import os
 import sys
 from pathlib import Path
 
-import time
-
 import streamlit as st
 from dotenv import load_dotenv
 
-# .envを読み込む
+# ローカル開発用：.envを読み込む
 REPORT_BOT_DIR = Path.home() / "report-bot"
 load_dotenv(REPORT_BOT_DIR / ".env", override=True)
+
+# Streamlit Cloud用：Secretsがあれば環境変数に設定する
+if "OPENAI_API_KEY" in st.secrets:
+    os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+if "GOOGLE_CHAT_WEBHOOK" in st.secrets:
+    os.environ["GOOGLE_CHAT_WEBHOOK"] = st.secrets["GOOGLE_CHAT_WEBHOOK"]
 
 sys.path.insert(0, str(REPORT_BOT_DIR))
 from analyze import extract_data_from_image, generate_report, post_to_google_chat
