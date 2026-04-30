@@ -42,7 +42,9 @@ if st.session_state.stage == "upload":
 
     if uploaded_file and period:
         if st.button("データ抽出を開始", type="primary"):
-            save_path = REPORT_BOT_DIR / uploaded_file.name
+            import tempfile
+            tmp_dir = Path(tempfile.mkdtemp())
+            save_path = tmp_dir / uploaded_file.name
             with open(save_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
 
