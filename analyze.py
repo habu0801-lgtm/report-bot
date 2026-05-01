@@ -87,30 +87,87 @@ def extract_data_from_image(image_path: Path) -> dict:
     return json.loads(response.choices[0].message.content)
 
 
-def generate_report(data: dict, period: str, store_name: str = "古河店") -> str:
+def _compute_daily_targets(data: dict, remaining_days: int) -> dict:
+    """数値項目に残り件数と日割り目標を付与する。%単位の項目はスキップ。"""
+    result = {}
+    for category, items in data.items():
+        result[category] = {}
+        for item_name, metrics in items.items():
+            m = dict(metrics)
+            target = metrics.get("目標", "-")
+            actual = metrics.get("実績", "-")
+            t_str = str(target)
+            a_str = str(actual)
+            if not t_str.endswith("%") and t_str not in ("-", "") and a_str not in ("-", ""):
+                try:
+                    t = float(t_str)
+                    a = float(a_str)
+                    remaining = max(0.0, t - a)
+                    m["残り件数"] = int(remaining)
+                    m["日割り目標"] = f"{remaining / remaining_days:.1f}"
+                except (ValueError, ZeroDivisionError):
+                    pass
+            result[category][item_name] = m
+    return result
+
+
+def generate_report(
+    data: dict,
+    period: str,
+    store_name: str = "古河店",
+    report_date: str = "",
+    remaining_days: int = 0,
+    period_end: str = "",
+) -> str:
     """GPT-4oで実績データを分析してレポートを生成する。"""
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-    prompt = f"""
-あなたは通信代理店の優秀なマネージャーです。
-以下の実績データを分析して、店舗向けの実績レポートを作成してください。
+    enriched = _compute_daily_targets(data, remaining_days) if remaining_days > 0 else data
+    sep = "-" * 80
 
+    prompt = f"""あなたは通信代理店の優秀なマネージャーです。
+以下の実績データを分析して、Google Chat向けの実績レポートを作成してください。
+
+# 入力情報
+店舗名：{store_name}
 対象期間：{period}
-実績データ：
-{json.dumps(data, ensure_ascii=False, indent=2)}
+報告日：{report_date}
+残り日数：{remaining_days}日（本日含む）
+月末日：{period_end}
 
-レポートの要件：
-1. 冒頭は「{period}ダッシュボード最新実績を配信します。」の次の行に「{store_name}の実績についてご報告いたします。」を入れる
-2. 各カテゴリ（モバイル・LD系・BBC）ごとに状況をまとめる
-3. 達成率が標準進捗・全国平均を上回っている項目を【良い点】として挙げる
-4. 達成率が標準進捗・全国平均を下回っている項目を【課題】として挙げる
-5. 全体の総評を簡潔に述べる
+# 実績データ（残り件数・日割り目標は計算済み）
+{json.dumps(enriched, ensure_ascii=False, indent=2)}
 
-出力形式：
-- 必ずプレーンテキストで出力する
-- #、##、*、**、- などのMarkdown記法は絶対に使わない
-- 【】と・を使った読みやすい形式にする
-- Google Chatに投稿することを想定した簡潔な文章
+# 出力フォーマット（以下を厳密に守ること）
+
+1行目: 【実績報告】{report_date}時点 良い点・改善点総評
+2行目: （空行）
+3行目以降: ▼総評 [2〜4文の総評。全体状況、良い点と課題を具体的に。改行なし]
+（空行）
+{sep}
+✅ 良い点（順調・達成圏内） ※標準進捗および全国平均を上回っている項目です。
+[達成率 >= 標準進捗 の項目を以下の形式で。達成率の高い順に列挙。項目間に空行を入れる]
+
+[項目名]目標：[目標]件 / 実績：[実績]件
+（達成率：[達成率] / 標準進捗 [標準進捗]）
+[任意：特に優秀な場合や特記事項があれば1〜2文のコメント]
+
+{sep}
+⚠️ 改善点・リカバリー目標（残り{remaining_days}日） ※標準進捗に対して未達の項目です。（ ）内は
+本日含む残り期間（{report_date}～{period_end}の{remaining_days}日間）での1日あたり必達獲得数です。
+
+[達成率 < 標準進捗 の項目を【モバイル系】【金融・LD系】【BBC】でグループ化]
+[各カテゴリ見出し行に任意でカテゴリ全体の一言コメントを追加可]
+[項目名]目標：[目標]件 / 実績：[実績]件
+（達成率：[達成率] / 標準進捗 [標準進捗]）日割り目標：[日割り目標]件 / 日（残り[残り件数]件）
+[任意：1〜2文のコメント]
+
+# ルール
+- プレーンテキストのみ。#, *, **, `, -, _ などのMarkdown記法は絶対に使わない
+- セパレーターは「{sep}」をそのまま使う（ハイフン80文字）
+- 数値は実績データの値をそのまま使用。日割り目標も「日割り目標」フィールドの値をそのまま転記
+- %単位の項目（au+1総販付帯率など）は「件」を「%」に変え、日割り目標は省略
+- 良い点・改善点に該当する項目がない場合は「該当項目なし」と記載
 """
 
     response = client.chat.completions.create(

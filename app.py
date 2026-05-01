@@ -1,3 +1,5 @@
+import calendar
+import datetime
 import html as html_mod
 import os
 import sys
@@ -314,11 +316,13 @@ def render_upload_stage():
 """, unsafe_allow_html=True)
 
     st.markdown('<div class="section-card"><div class="section-card-label">基本情報</div>', unsafe_allow_html=True)
-    col_store, col_period = st.columns([1, 1])
+    col_store, col_period, col_date = st.columns([1, 1, 1])
     with col_store:
         store_name = st.selectbox("店舗", list(STORE_CONFIGS.keys()))
     with col_period:
         period = st.text_input("対象期間", placeholder="例：2026年4月")
+    with col_date:
+        report_date = st.date_input("報告日（何日時点？）", value=datetime.date.today())
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="section-card"><div class="section-card-label">実績データ画像</div>', unsafe_allow_html=True)
@@ -336,10 +340,14 @@ def render_upload_stage():
                 f.write(uploaded_file.getbuffer())
             with st.spinner("GPT-4oが画像からデータを読み取り中..."):
                 data = extract_data_from_image(save_path)
+            last_day = calendar.monthrange(report_date.year, report_date.month)[1]
             st.session_state.data = data
             st.session_state.period = period
             st.session_state.store_name = store_name
             st.session_state.image_path = str(save_path)
+            st.session_state.report_date_str = f"{report_date.month}/{report_date.day}"
+            st.session_state.remaining_days = last_day - report_date.day + 1
+            st.session_state.period_end = f"{report_date.month}/{last_day}"
             st.session_state.posted = False
             st.session_state.stage = "confirm"
             st.rerun()
@@ -372,6 +380,9 @@ def render_confirm_stage():
                         st.session_state.data,
                         st.session_state.period,
                         store_name,
+                        report_date=st.session_state.get("report_date_str", ""),
+                        remaining_days=st.session_state.get("remaining_days", 0),
+                        period_end=st.session_state.get("period_end", ""),
                     )
                     webhook_key = STORE_CONFIGS[store_name]["webhook_key"]
                     webhook_url = (
