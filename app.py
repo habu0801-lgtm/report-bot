@@ -334,12 +334,16 @@ def render_upload_stage():
 
     if uploaded_file and period:
         if st.button("データ抽出を開始 →", type="primary", use_container_width=True):
+            import shutil
             tmp_dir = Path(tempfile.mkdtemp())
-            save_path = tmp_dir / uploaded_file.name
-            with open(save_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            with st.spinner("GPT-4oが画像からデータを読み取り中..."):
-                data = extract_data_from_image(save_path)
+            try:
+                save_path = tmp_dir / uploaded_file.name
+                with open(save_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                with st.spinner("GPT-4oが画像からデータを読み取り中..."):
+                    data = extract_data_from_image(save_path)
+            finally:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
             last_day = calendar.monthrange(report_date.year, report_date.month)[1]
             st.session_state.data = data
             st.session_state.period = period
@@ -374,26 +378,32 @@ def render_confirm_stage():
     if not st.session_state.get("posted"):
         col1, col2 = st.columns([3, 1])
         with col1:
+            webhook_key = STORE_CONFIGS[store_name]["webhook_key"]
+            webhook_url = (
+                st.secrets.get(webhook_key)
+                or os.environ.get(webhook_key)
+                or os.environ.get("GOOGLE_CHAT_WEBHOOK")
+            )
             if st.button("Google Chatに投稿する →", type="primary", use_container_width=True):
-                with st.spinner("レポートを生成・投稿中..."):
-                    report = generate_report(
-                        st.session_state.data,
-                        st.session_state.period,
-                        store_name,
-                        report_date=st.session_state.get("report_date_str", ""),
-                        remaining_days=st.session_state.get("remaining_days", 0),
-                        period_end=st.session_state.get("period_end", ""),
-                    )
-                    webhook_key = STORE_CONFIGS[store_name]["webhook_key"]
-                    webhook_url = (
-                        st.secrets.get(webhook_key)
-                        or os.environ.get(webhook_key)
-                        or os.environ.get("GOOGLE_CHAT_WEBHOOK")
-                    )
-                    post_to_google_chat(report, webhook_url)
-                st.session_state.report = report
-                st.session_state.posted = True
-                st.rerun()
+                if not webhook_url:
+                    st.error(f"{webhook_key} が設定されていません。")
+                else:
+                    try:
+                        with st.spinner("レポートを生成・投稿中..."):
+                            report = generate_report(
+                                st.session_state.data,
+                                st.session_state.period,
+                                store_name,
+                                report_date=st.session_state.get("report_date_str", ""),
+                                remaining_days=st.session_state.get("remaining_days", 0),
+                                period_end=st.session_state.get("period_end", ""),
+                            )
+                            post_to_google_chat(report, webhook_url)
+                        st.session_state.report = report
+                        st.session_state.posted = True
+                        st.rerun()
+                    except RuntimeError as e:
+                        st.error(str(e))
         with col2:
             if st.button("やり直す", use_container_width=True):
                 st.session_state.stage = "upload"

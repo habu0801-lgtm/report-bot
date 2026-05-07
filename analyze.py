@@ -75,7 +75,7 @@ def extract_data_from_image(image_path: Path) -> dict:
                     {
                         "type": "image_url",
                         "image_url": {
-                            "url": f"data:image/png;base64,{base64_image}"
+                            "url": f"data:{'image/jpeg' if Path(image_path).suffix.lower() in ('.jpg', '.jpeg') else 'image/png'};base64,{base64_image}"
                         },
                     },
                 ],
@@ -189,11 +189,11 @@ def post_to_google_chat(text: str, webhook_url: str) -> None:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req) as response:
-            status = response.getcode()
+        with urllib.request.urlopen(req, timeout=10) as response:
+            if not (200 <= response.getcode() < 300):
+                raise RuntimeError(f"Google Chat投稿に失敗しました: HTTP {response.getcode()}")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Google Chat投稿に失敗しました: HTTP {exc.code} {detail}")
-
-    if status < 200 or status >= 300:
-        raise RuntimeError(f"Google Chat投稿に失敗しました: HTTP {status}")
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Google Chatへの接続に失敗しました: {exc.reason}")
