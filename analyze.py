@@ -8,7 +8,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from openai import OpenAI
+from openai import OpenAI, APIError, APIConnectionError, RateLimitError
 
 
 def encode_image(image_path: Path) -> str:
@@ -65,24 +65,31 @@ def extract_data_from_image(image_path: Path) -> dict:
 読み取れない項目は「-」と記載してください。
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{'image/jpeg' if Path(image_path).suffix.lower() in ('.jpg', '.jpeg') else 'image/png'};base64,{base64_image}"
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{'image/jpeg' if Path(image_path).suffix.lower() in ('.jpg', '.jpeg') else 'image/png'};base64,{base64_image}"
+                            },
                         },
-                    },
-                ],
-            }
-        ],
-        response_format={"type": "json_object"},
-    )
+                    ],
+                }
+            ],
+            response_format={"type": "json_object"},
+        )
+    except RateLimitError:
+        raise RuntimeError("OpenAI APIのレート制限に達しました。しばらく待ってから再試行してください。")
+    except APIConnectionError:
+        raise RuntimeError("OpenAI APIへの接続に失敗しました。ネットワークを確認してください。")
+    except APIError as e:
+        raise RuntimeError(f"OpenAI APIエラーが発生しました: {e}")
 
     return json.loads(response.choices[0].message.content)
 
@@ -170,10 +177,17 @@ def generate_report(
 - 良い点・改善点に該当する項目がない場合は「該当項目なし」と記載
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except RateLimitError:
+        raise RuntimeError("OpenAI APIのレート制限に達しました。しばらく待ってから再試行してください。")
+    except APIConnectionError:
+        raise RuntimeError("OpenAI APIへの接続に失敗しました。ネットワークを確認してください。")
+    except APIError as e:
+        raise RuntimeError(f"OpenAI APIエラーが発生しました: {e}")
 
     return response.choices[0].message.content.strip()
 

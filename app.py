@@ -170,7 +170,8 @@ html, body, [class*="css"] {
 
 div[data-testid="stSelectbox"] label,
 div[data-testid="stTextInput"] label,
-div[data-testid="stFileUploader"] label {
+div[data-testid="stFileUploader"] label,
+div[data-testid="stDateInput"] label {
     font-size: 0.8rem !important;
     font-weight: 600 !important;
     color: #8896AE !important;
@@ -254,6 +255,11 @@ def render_step_indicator(current_stage: str):
 """, unsafe_allow_html=True)
 
 
+def _td(v: object) -> str:
+    """テーブルセル用のHTMLスパンを生成する。"""
+    return f'<span style="color:#E8EDF5;font-variant-numeric:tabular-nums;">{html_mod.escape(str(v))}</span>'
+
+
 def render_category_card(category: str, items: dict):
     icon = CATEGORY_ICONS.get(category, "📊")
     safe_cat = html_mod.escape(category)
@@ -271,17 +277,14 @@ def render_category_card(category: str, items: dict):
             f'{tier["icon"]}{html_mod.escape(str(ach_val))}</span>'
         )
 
-        def td(v):
-            return f'<span style="color:#E8EDF5;font-variant-numeric:tabular-nums;">{html_mod.escape(str(v))}</span>'
-
         rows_html += f"""
 <tr>
   <td class="col-item">{html_mod.escape(str(item_name))}</td>
-  <td class="col-num">{td(metrics.get("目標", "-"))}</td>
-  <td class="col-num col-jisseki">{td(metrics.get("実績", "-"))}</td>
+  <td class="col-num">{_td(metrics.get("目標", "-"))}</td>
+  <td class="col-num col-jisseki">{_td(metrics.get("実績", "-"))}</td>
   <td class="col-pct">{badge}</td>
-  <td class="col-pct">{td(metrics.get("標準進捗", "-"))}</td>
-  <td class="col-pct">{td(metrics.get("全国平均", "-"))}</td>
+  <td class="col-pct">{_td(metrics.get("標準進捗", "-"))}</td>
+  <td class="col-pct">{_td(metrics.get("全国平均", "-"))}</td>
 </tr>"""
 
     st.markdown(f"""
@@ -348,7 +351,6 @@ def render_upload_stage():
             st.session_state.data = data
             st.session_state.period = period
             st.session_state.store_name = store_name
-            st.session_state.image_path = str(save_path)
             st.session_state.report_date_str = f"{report_date.month}/{report_date.day}"
             st.session_state.remaining_days = last_day - report_date.day + 1
             st.session_state.period_end = f"{report_date.month}/{last_day}"
@@ -424,7 +426,8 @@ def render_confirm_stage():
 """, unsafe_allow_html=True)
 
         if st.button("新しい画像を処理する →", type="primary"):
-            for key in ["data", "period", "store_name", "image_path", "report", "posted"]:
+            for key in ["data", "period", "store_name", "image_path", "report", "posted",
+                        "report_date_str", "remaining_days", "period_end"]:
                 st.session_state.pop(key, None)
             st.session_state.stage = "upload"
             st.rerun()
